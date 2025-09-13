@@ -2,6 +2,19 @@
 
 EventSphereBackend is an API system for university event management, built with Node.js, Express, and MySQL. It supports user management, event management, registration, attendance, certificate issuance, feedback, media, notifications, and role-based access control.
 
+## Minimum Node.js Version
+
+**Required Node.js version:**  
+`>= 18.0.0` (recommended: Node.js 20 LTS or newer)
+
+Add this to your `package.json` to enforce the minimum version:
+
+```json
+"engines": {
+  "node": ">=18.0.0"
+}
+```
+
 ## Folder Structure
 
 ```
