@@ -6,7 +6,7 @@ const jwt = require("jsonwebtoken");
  * @swagger
  * /register:
  *   post:
- *     summary: Đăng ký user mới
+ *     summary: Register a new user
  *     tags: [Users]
  *     requestBody:
  *       required: true
@@ -30,9 +30,9 @@ const jwt = require("jsonwebtoken");
  *                 default: 3
  *     responses:
  *       201:
- *         description: Đăng ký thành công
+ *         description: Registration successful
  *       400:
- *         description: Lỗi input
+ *         description: Invalid input
  */
 exports.register = async (req, res) => {
   const {
@@ -46,7 +46,7 @@ exports.register = async (req, res) => {
   if (roleId === 3 && !enrollmentNo)
     return res
       .status(400)
-      .json({ error: "EnrollmentNo bắt buộc cho student!" });
+      .json({ error: "EnrollmentNo is required for student!" });
 
   try {
     const [existing] = await pool.execute(
@@ -54,7 +54,7 @@ exports.register = async (req, res) => {
       [email]
     );
     if (existing.length > 0)
-      return res.status(400).json({ error: "Email đã tồn tại!" });
+      return res.status(400).json({ error: "Email already exists!" });
 
     const hashedPass = await bcrypt.hash(password, 10);
     const [userResult] = await pool.execute(
@@ -66,7 +66,7 @@ exports.register = async (req, res) => {
       "INSERT INTO UserProfiles (UserId, FullName, DepartmentId, EnrollmentNo) VALUES (?, ?, ?, ?)",
       [userId, fullName, departmentId, enrollmentNo || null]
     );
-    res.status(201).json({ message: "Đăng ký thành công!", userId });
+    res.status(201).json({ message: "Registration successful!", userId });
   } catch (err) {
     console.error("Lỗi register:", err);
     res.status(500).json({ error: "Lỗi server: " + err.message });
@@ -77,7 +77,7 @@ exports.register = async (req, res) => {
  * @swagger
  * /login:
  *   post:
- *     summary: Đăng nhập user
+ *     summary: User login
  *     tags: [Users]
  *     requestBody:
  *       required: true
@@ -92,7 +92,7 @@ exports.register = async (req, res) => {
  *                 type: string
  *     responses:
  *       200:
- *         description: Đăng nhập thành công
+ *         description: Login successful
  *         content:
  *           application/json:
  *             schema:
@@ -103,23 +103,23 @@ exports.register = async (req, res) => {
  *                 token:
  *                   type: string
  *       400:
- *         description: Lỗi input
+ *         description: Invalid input
  */
 exports.login = async (req, res) => {
   console.log("Request body:", req.body);
   const { email, password } = req.body || {};
   if (!email || !password)
-    return res.status(400).json({ error: "Email và password là bắt buộc!" });
+    return res.status(400).json({ error: "Email and password are required!" });
 
   try {
     const [rows] = await pool.execute("SELECT * FROM Users WHERE Email = ?", [
       email,
     ]);
     if (rows.length === 0)
-      return res.status(400).json({ error: "Email không tồn tại!" });
+      return res.status(400).json({ error: "Email does not exist!" });
     const user = rows[0];
     const isMatch = await bcrypt.compare(password, user.PasswordHash);
-    if (!isMatch) return res.status(400).json({ error: "Mật khẩu sai!" });
+    if (!isMatch) return res.status(400).json({ error: "Incorrect password!" });
 
     const token = jwt.sign(
       { userId: user.UserId, roleId: user.RoleId },
@@ -138,13 +138,13 @@ exports.login = async (req, res) => {
  * @swagger
  * /profile:
  *   get:
- *     summary: Lấy thông tin profile user
+ *     summary: Get user profile information
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Lấy profile thành công
+ *         description: Successfully retrieved profile
  *         content:
  *           application/json:
  *             schema:
@@ -164,9 +164,9 @@ exports.login = async (req, res) => {
  *                     DepartmentId:
  *                       type: integer
  *       401:
- *         description: Chưa đăng nhập
+ *         description: Unauthorized
  *       404:
- *         description: User không tồn tại
+ *         description: User not found
  */
 exports.getProfile = async (req, res) => {
   const userId = req.user.userId;
@@ -195,13 +195,13 @@ exports.getProfile = async (req, res) => {
  * @swagger
  * /users:
  *   get:
- *     summary: Lấy danh sách tất cả người dùng (chỉ admin)
+ *     summary: Get list of all users (only admin)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Lấy danh sách thành công
+ *         description: Successfully retrieved user list
  *         content:
  *           application/json:
  *             schema:
@@ -225,9 +225,9 @@ exports.getProfile = async (req, res) => {
  *                       DepartmentId:
  *                         type: integer
  *       403:
- *         description: Không có quyền truy cập
+ *         description: Forbidden
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 exports.getUsers = async (req, res) => {
   if (req.user.roleId !== 1) {
@@ -251,7 +251,7 @@ exports.getUsers = async (req, res) => {
  * @swagger
  * /users/{id}/role:
  *   put:
- *     summary: Nâng cấp quyền người dùng (chỉ admin)
+ *     summary: Update user role (only admin)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -275,7 +275,7 @@ exports.getUsers = async (req, res) => {
  *                 enum: [1, 2, 3]
  *     responses:
  *       200:
- *         description: Nâng cấp quyền thành công
+ *         description: Role updated successfully
  *         content:
  *           application/json:
  *             schema:
@@ -284,11 +284,11 @@ exports.getUsers = async (req, res) => {
  *                 message:
  *                   type: string
  *       400:
- *         description: User không tồn tại hoặc roleId không hợp lệ
+ *         description: User not found or invalid roleId
  *       403:
- *         description: Không có quyền truy cập
+ *         description: Forbidden
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 exports.updateUserRole = async (req, res) => {
   const userId = req.params.id;
@@ -324,7 +324,7 @@ exports.updateUserRole = async (req, res) => {
  * @swagger
  * /users/{id}:
  *   put:
- *     summary: Cập nhật thông tin người dùng (chỉ admin)
+ *     summary: Update user information (only admin)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -351,7 +351,7 @@ exports.updateUserRole = async (req, res) => {
  *                 type: string
  *     responses:
  *       200:
- *         description: Cập nhật thành công
+ *         description: Update successful
  *         content:
  *           application/json:
  *             schema:
@@ -360,11 +360,11 @@ exports.updateUserRole = async (req, res) => {
  *                 message:
  *                   type: string
  *       400:
- *         description: User không tồn tại
+ *         description: User not found
  *       403:
- *         description: Không có quyền truy cập
+ *         description: Forbidden
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 exports.updateUser = async (req, res) => {
   const userId = req.params.id;
@@ -403,7 +403,7 @@ exports.updateUser = async (req, res) => {
  * @swagger
  * /users/{id}:
  *   delete:
- *     summary: Xóa người dùng (chỉ admin)
+ *     summary: Delete a user (only admin)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -415,7 +415,7 @@ exports.updateUser = async (req, res) => {
  *           type: integer
  *     responses:
  *       200:
- *         description: Xóa thành công
+ *         description: Delete successful
  *         content:
  *           application/json:
  *             schema:
@@ -424,11 +424,11 @@ exports.updateUser = async (req, res) => {
  *                 message:
  *                   type: string
  *       403:
- *         description: Không có quyền truy cập
+ *         description: Forbidden
  *       404:
- *         description: User không tồn tại
+ *         description: User not found
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 exports.deleteUser = async (req, res) => {
   const userId = req.params.id;
@@ -450,6 +450,149 @@ exports.deleteUser = async (req, res) => {
     res.json({ message: "Xóa người dùng thành công!" });
   } catch (err) {
     console.error("Lỗi deleteUser:", err);
+    res.status(500).json({ error: "Lỗi server: " + err.message });
+  }
+};
+
+/**
+ * @swagger
+ * /profile:
+ *   put:
+ *     summary: Update user profile information
+ *     description: Allows user to update their own profile information
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *               departmentId:
+ *                 type: integer
+ *               enrollmentNo:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid input
+ *       403:
+ *         description: Forbidden (not authorized user)
+ *       500:
+ *         description: Server error
+ */
+exports.updateUserProfile = async (req, res) => {
+  const userId = req.user.userId;
+  const { fullName, departmentId, enrollmentNo } = req.body;
+
+  try {
+    const [user] = await pool.execute("SELECT * FROM Users WHERE UserId = ?", [
+      userId,
+    ]);
+    if (user.length === 0) {
+      return res.status(400).json({ error: "User không tồn tại!" });
+    }
+
+    await pool.execute(
+      "UPDATE UserProfiles SET FullName = ?, DepartmentId = ?, EnrollmentNo = ? WHERE UserId = ?",
+      [
+        fullName || user[0].FullName,
+        departmentId || user[0].DepartmentId,
+        enrollmentNo || user[0].EnrollmentNo,
+        userId,
+      ]
+    );
+    res.json({ message: "Cập nhật thông tin người dùng thành công!" });
+  } catch (err) {
+    console.error("Lỗi updateUserProfile:", err);
+    res.status(500).json({ error: "Lỗi server: " + err.message });
+  }
+};
+
+/**
+ * @swagger
+ * /profile/password:
+ *   put:
+ *     summary: Change user password
+ *     description: Allows user to change their password with old password verification
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - oldPassword
+ *               - newPassword
+ *             properties:
+ *               oldPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid input or incorrect old password
+ *       403:
+ *         description: Forbidden
+ *       500:
+ *         description: Server error
+ */
+exports.changePassword = async (req, res) => {
+  const userId = req.user.userId;
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword || !newPassword) {
+    return res
+      .status(400)
+      .json({ error: "Old password and new password are required!" });
+  }
+
+  try {
+    const [user] = await pool.execute(
+      "SELECT PasswordHash FROM Users WHERE UserId = ?",
+      [userId]
+    );
+    if (user.length === 0) {
+      return res.status(400).json({ error: "User không tồn tại!" });
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user[0].PasswordHash);
+    if (!isMatch) {
+      return res.status(400).json({ error: "Mật khẩu cũ không đúng!" });
+    }
+
+    const newHashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.execute("UPDATE Users SET PasswordHash = ? WHERE UserId = ?", [
+      newHashedPassword,
+      userId,
+    ]);
+    res.json({ message: "Đổi mật khẩu thành công!" });
+  } catch (err) {
+    console.error("Lỗi changePassword:", err);
     res.status(500).json({ error: "Lỗi server: " + err.message });
   }
 };
