@@ -2,12 +2,10 @@ const express = require("express");
 const dotenv = require("dotenv");
 dotenv.config(); // Load .env
 const path = require("path");
+const cors = require("cors");
 const app = express();
+app.use(cors());
 app.use(express.json()); // Middleware parse JSON
-app.use((req, res, next) => {
-  console.log("Body received:", req.body); // Debug body
-  next();
-});
 
 // Serve static files for certificates and media
 app.use("/certificates", express.static(path.join(__dirname, "certificates")));
@@ -128,7 +126,8 @@ app.delete(
   eventController.deleteMedia
 ); // Admin/Organizer
 app.get("/analytics", auth, requireRole([1]), eventController.getAnalytics); // Chỉ admin
-
+app.get("/categories", eventController.getCategories);
+app.get("/venues", eventController.getVenues);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server chạy tại http://localhost:${PORT}`);

@@ -1769,11 +1769,9 @@ exports.getAnalytics = async (req, res) => {
     });
   } catch (err) {
     console.error("Lỗi getAnalytics:", err);
-    res
-      .status(500)
-      .json({
-        error: "Lỗi server: " + err.message + " - Chi tiết: " + err.sqlMessage,
-      });
+    res.status(500).json({
+      error: "Lỗi server: " + err.message + " - Chi tiết: " + err.sqlMessage,
+    });
   }
 };
 
@@ -1817,30 +1815,187 @@ exports.getAnalytics = async (req, res) => {
  *         description: Server error
  */
 exports.registerEvent = async (req, res) => {
-    const { eventId } = req.body;
-    const userId = req.user.userId;
+  const { eventId } = req.body;
+  const userId = req.user.userId;
 
-    if (req.user.roleId !== 3) {
-        return res.status(403).json({ error: 'Chỉ student được đăng ký!' });
+  if (req.user.roleId !== 3) {
+    return res.status(403).json({ error: "Chỉ student được đăng ký!" });
+  }
+  if (!eventId) {
+    return res.status(400).json({ error: "EventId là bắt buộc!" });
+  }
+
+  try {
+    const [event] = await pool.execute(
+      "SELECT MaxParticipants, (SELECT COUNT(*) FROM Registrations r WHERE r.EventId = e.EventId AND r.Status = 0) as Registered FROM Events e WHERE EventId = ? AND Status = 1",
+      [eventId]
+    );
+    if (event.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "Sự kiện không tồn tại hoặc chưa được phê duyệt!" });
     }
-    if (!eventId) {
-        return res.status(400).json({ error: 'EventId là bắt buộc!' });
+    if (
+      event[0].MaxParticipants &&
+      event[0].Registered >= event[0].MaxParticipants
+    ) {
+      await pool.execute(
+        "INSERT INTO WaitlistEntries (UserId, EventId) VALUES (?, ?)",
+        [userId, eventId]
+      );
+      return res.status(201).json({
+        message: "Sự kiện đầy, bạn đã được thêm vào hàng đợi!",
+        isWaitlist: true,
+      });
     }
 
-    try {
-        const [event] = await pool.execute('SELECT MaxParticipants, (SELECT COUNT(*) FROM Registrations r WHERE r.EventId = e.EventId AND r.Status = 0) as Registered FROM Events e WHERE EventId = ? AND Status = 1', [eventId]);
-        if (event.length === 0) {
-            return res.status(400).json({ error: 'Sự kiện không tồn tại hoặc chưa được phê duyệt!' });
-        }
-        if (event[0].MaxParticipants && event[0].Registered >= event[0].MaxParticipants) {
-            await pool.execute('INSERT INTO WaitlistEntries (UserId, EventId) VALUES (?, ?)', [userId, eventId]);
-            return res.status(201).json({ message: 'Sự kiện đầy, bạn đã được thêm vào hàng đợi!', isWaitlist: true });
-        }
+    await pool.execute(
+      "INSERT INTO Registrations (UserId, EventId, Status) VALUES (?, ?, 0)",
+      [userId, eventId]
+    );
+    res.status(201).json({ message: "Đăng ký thành công!", isWaitlist: false });
+  } catch (err) {
+    console.error("Lỗi registerEvent:", err);
+    res.status(500).json({ error: "Lỗi server: " + err.message });
+  }
+};
 
-        await pool.execute('INSERT INTO Registrations (UserId, EventId, Status) VALUES (?, ?, 0)', [userId, eventId]);
-        res.status(201).json({ message: 'Đăng ký thành công!', isWaitlist: false });
-    } catch (err) {
-        console.error('Lỗi registerEvent:', err);
-        res.status(500).json({ error: 'Lỗi server: ' + err.message });
+/**
+ * @swagger
+ * /categories:
+ *   get:
+ *     summary: Get list of event categories
+ *     description: Retrieves a list of available event categories for creating new events
+ *     tags: [Events]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Categories retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     categories:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           CategoryId:
+ *                             type: integer
+ *                           CategoryName:
+ *                             type: string
+ *                 error:
+ *                   type: string
+ *                   nullable: true
+ *       500:
+ *         description: Server error
+ */
+exports.getCategories = async (req, res) => {
+  try {
+    const [categories] = await pool.execute(
+      "SELECT CategoryId, CategoryName FROM EventCategories"
+    );
+    if (!categories || categories.length === 0) {
+      return res.json({
+        success: true,
+        message: "No categories found!",
+        data: { categories: [] },
+        error: null,
+      });
     }
+    res.json({
+      success: true,
+      message: "Categories retrieved successfully!",
+      data: { categories },
+      error: null,
+    });
+  } catch (err) {
+    console.error("Error getting categories:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve categories!",
+      data: null,
+      error: err.message,
+    });
+  }
+};
+
+/**
+ * @swagger
+ * /venues:
+ *   get:
+ *     summary: Get list of venues
+ *     description: Retrieves a list of available venues for creating new events
+ *     tags: [Events]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Venues retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     venues:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           VenueId:
+ *                             type: integer
+ *                           VenueName:
+ *                             type: string
+ *                           Location:
+ *                             type: string
+ *                           Capacity:
+ *                             type: integer
+ *                 error:
+ *                   type: string
+ *                   nullable: true
+ *       500:
+ *         description: Server error
+ */
+exports.getVenues = async (req, res) => {
+  try {
+    const [venues] = await pool.execute(
+      "SELECT VenueId, VenueName, Location, Capacity FROM Venues"
+    );
+    if (!venues || venues.length === 0) {
+      return res.json({
+        success: true,
+        message: "No venues found!",
+        data: { venues: [] },
+        error: null,
+      });
+    }
+    res.json({
+      success: true,
+      message: "Venues retrieved successfully!",
+      data: { venues },
+      error: null,
+    });
+  } catch (err) {
+    console.error("Error getting venues:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve venues!",
+      data: null,
+      error: err.message,
+    });
+  }
 };
