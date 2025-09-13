@@ -1,15 +1,15 @@
-const pool = require("../db");
+const pool = require("../db"); // Import DB pool
 
 /**
  * @swagger
  * /events:
  *   get:
- *     summary: Lấy danh sách sự kiện đã phê duyệt
- *     description: Trả về tất cả sự kiện có trạng thái approved (Status = 1)
+ *     summary: Get a list of approved events
+ *     description: Returns all events with status approved (Status = 1)
  *     tags: [Events]
  *     responses:
  *       200:
- *         description: Lấy danh sách thành công
+ *         description: Successfully retrieved list of events
  *         content:
  *           application/json:
  *             schema:
@@ -41,7 +41,7 @@ const pool = require("../db");
  *                       CategoryName:
  *                         type: string
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  *         content:
  *           application/json:
  *             schema:
@@ -51,14 +51,15 @@ const pool = require("../db");
  *                   type: string
  */
 exports.getEvents = async (req, res) => {
+  const getEventsQuery = `
+        SELECT e.EventId, e.Title, e.Description, e.StartTime, e.EndTime, e.MaxParticipants, e.Status, v.VenueName, c.CategoryName 
+        FROM Events e 
+        LEFT JOIN Venues v ON e.VenueId = v.VenueId 
+        LEFT JOIN EventCategories c ON e.CategoryId = c.CategoryId 
+        WHERE e.Status = 1
+    `;
   try {
-    const [rows] = await pool.execute(
-      "SELECT e.EventId, e.Title, e.Description, e.StartTime, e.EndTime, e.MaxParticipants, e.Status, v.VenueName, c.CategoryName " +
-        "FROM Events e " +
-        "LEFT JOIN Venues v ON e.VenueId = v.VenueId " +
-        "LEFT JOIN EventCategories c ON e.CategoryId = c.CategoryId " +
-        "WHERE e.Status = 1" // Chỉ lấy approved
-    );
+    const [rows] = await pool.execute(getEventsQuery);
     res.json({ events: rows });
   } catch (err) {
     console.error("Lỗi getEvents:", err);
@@ -70,14 +71,14 @@ exports.getEvents = async (req, res) => {
  * @swagger
  * /events/pending:
  *   get:
- *     summary: Lấy danh sách sự kiện đang chờ phê duyệt
- *     description: Trả về tất cả sự kiện có trạng thái pending (Status = 0), chỉ cho admin và organizer
+ *     summary: Get a list of pending events
+ *     description: Returns all events with status pending (Status = 0) for admin and organizer
  *     tags: [Events]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Lấy danh sách thành công
+ *         description: Successfully retrieved list of pending events
  *         content:
  *           application/json:
  *             schema:
@@ -109,20 +110,21 @@ exports.getEvents = async (req, res) => {
  *                       CategoryName:
  *                         type: string
  *       403:
- *         description: Không có quyền truy cập
+ *         description: Forbidden (not admin or organizer)
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 exports.getPendingEvents = async (req, res) => {
+  const getPendingEventsQuery = `
+        SELECT e.EventId, e.Title, e.Description, e.StartTime, e.EndTime, e.MaxParticipants, e.Status, v.VenueName, c.CategoryName 
+        FROM Events e 
+        LEFT JOIN Venues v ON e.VenueId = v.VenueId 
+        LEFT JOIN EventCategories c ON e.CategoryId = c.CategoryId 
+        WHERE e.Status = 0
+    `;
   try {
-    const [rows] = await pool.execute(
-      "SELECT e.EventId, e.Title, e.Description, e.StartTime, e.EndTime, e.MaxParticipants, e.Status, v.VenueName, c.CategoryName " +
-        "FROM Events e " +
-        "LEFT JOIN Venues v ON e.VenueId = v.VenueId " +
-        "LEFT JOIN EventCategories c ON e.CategoryId = c.CategoryId " +
-        "WHERE e.Status = 0" // Chỉ lấy pending
-    );
-    res.json({ pendingEvents: rows }); // Trả mảng sự kiện pending
+    const [rows] = await pool.execute(getPendingEventsQuery);
+    res.json({ pendingEvents: rows });
   } catch (err) {
     console.error("Lỗi getPendingEvents:", err);
     res.status(500).json({ error: "Lỗi server: " + err.message });
@@ -133,8 +135,8 @@ exports.getPendingEvents = async (req, res) => {
  * @swagger
  * /events:
  *   post:
- *     summary: Tạo sự kiện mới (chỉ admin hoặc organizer)
- *     description: Tạo sự kiện với trạng thái pending (Status = 0), cần phê duyệt
+ *     summary: Create a new event (only admin or organizer)
+ *     description: Creates a new event with pending status (Status = 0) requiring approval
  *     tags: [Events]
  *     security:
  *       - bearerAuth: []
@@ -169,7 +171,7 @@ exports.getPendingEvents = async (req, res) => {
  *                 type: integer
  *     responses:
  *       201:
- *         description: Tạo sự kiện thành công, chờ phê duyệt
+ *         description: Event created successfully, awaiting approval
  *         content:
  *           application/json:
  *             schema:
@@ -180,11 +182,11 @@ exports.getPendingEvents = async (req, res) => {
  *                 eventId:
  *                   type: integer
  *       400:
- *         description: Thiếu thông tin bắt buộc
+ *         description: Missing required information
  *       403:
- *         description: Không có quyền truy cập
+ *         description: Forbidden (not admin or organizer)
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 exports.createEvent = async (req, res) => {
   const {
@@ -202,21 +204,21 @@ exports.createEvent = async (req, res) => {
     return res.status(400).json({ error: "Thiếu thông tin bắt buộc!" });
   }
 
+  const createEventQuery = `
+        INSERT INTO Events (Title, Description, StartTime, EndTime, MaxParticipants, Status, OrganizerId, CategoryId, VenueId) 
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
+    `;
   try {
-    const [result] = await pool.execute(
-      "INSERT INTO Events (Title, Description, StartTime, EndTime, MaxParticipants, Status, OrganizerId, CategoryId, VenueId) " +
-        "VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)", // Status=0 (pending)
-      [
-        title,
-        description,
-        startTime,
-        endTime,
-        maxParticipants,
-        organizerId,
-        categoryId,
-        venueId,
-      ]
-    );
+    const [result] = await pool.execute(createEventQuery, [
+      title,
+      description,
+      startTime,
+      endTime,
+      maxParticipants,
+      organizerId,
+      categoryId,
+      venueId,
+    ]);
     res.status(201).json({
       message: "Tạo sự kiện thành công! Chờ phê duyệt.",
       eventId: result.insertId,
@@ -231,8 +233,8 @@ exports.createEvent = async (req, res) => {
  * @swagger
  * /events/{id}/approve:
  *   put:
- *     summary: Phê duyệt sự kiện (chỉ admin)
- *     description: Cập nhật trạng thái sự kiện từ pending (0) thành approved (1)
+ *     summary: Approve an event (only admin)
+ *     description: Updates event status from pending (0) to approved (1)
  *     tags: [Events]
  *     security:
  *       - bearerAuth: []
@@ -244,7 +246,7 @@ exports.createEvent = async (req, res) => {
  *           type: integer
  *     responses:
  *       200:
- *         description: Phê duyệt thành công
+ *         description: Approval successful
  *         content:
  *           application/json:
  *             schema:
@@ -253,15 +255,18 @@ exports.createEvent = async (req, res) => {
  *                 message:
  *                   type: string
  *       403:
- *         description: Không có quyền truy cập
+ *         description: Forbidden (not admin)
  *       404:
- *         description: Sự kiện không tồn tại
+ *         description: Event not found
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 exports.approveEvent = async (req, res) => {
   const eventId = req.params.id;
 
+  const approveEventQuery = `
+        UPDATE Events SET Status = 1, ApproverId = ? WHERE EventId = ?
+    `;
   try {
     const [event] = await pool.execute(
       "SELECT * FROM Events WHERE EventId = ?",
@@ -274,10 +279,7 @@ exports.approveEvent = async (req, res) => {
       return res.status(403).json({ error: "Chỉ admin được phê duyệt!" });
     }
 
-    await pool.execute(
-      "UPDATE Events SET Status = 1, ApproverId = ? WHERE EventId = ?",
-      [req.user.userId, eventId]
-    );
+    await pool.execute(approveEventQuery, [req.user.userId, eventId]);
     res.json({ message: "Phê duyệt sự kiện thành công!" });
   } catch (err) {
     console.error("Lỗi approveEvent:", err);
@@ -289,8 +291,8 @@ exports.approveEvent = async (req, res) => {
  * @swagger
  * /events/{id}:
  *   put:
- *     summary: Cập nhật sự kiện (chỉ admin hoặc organizer)
- *     description: Chỉ organizer của sự kiện hoặc admin được phép cập nhật
+ *     summary: Update an event (only admin or organizer)
+ *     description: Only the organizer of the event or admin can update
  *     tags: [Events]
  *     security:
  *       - bearerAuth: []
@@ -325,7 +327,7 @@ exports.approveEvent = async (req, res) => {
  *                 type: integer
  *     responses:
  *       200:
- *         description: Cập nhật thành công
+ *         description: Update successful
  *         content:
  *           application/json:
  *             schema:
@@ -334,11 +336,11 @@ exports.approveEvent = async (req, res) => {
  *                 message:
  *                   type: string
  *       403:
- *         description: Không có quyền truy cập
+ *         description: Forbidden (not authorized)
  *       404:
- *         description: Sự kiện không tồn tại
+ *         description: Event not found
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 exports.updateEvent = async (req, res) => {
   const eventId = req.params.id;
@@ -353,6 +355,9 @@ exports.updateEvent = async (req, res) => {
   } = req.body;
   const userId = req.user.userId;
 
+  const updateEventQuery = `
+        UPDATE Events SET Title = ?, Description = ?, StartTime = ?, EndTime = ?, MaxParticipants = ?, CategoryId = ?, VenueId = ? WHERE EventId = ?
+    `;
   try {
     const [event] = await pool.execute(
       "SELECT OrganizerId FROM Events WHERE EventId = ?",
@@ -365,19 +370,16 @@ exports.updateEvent = async (req, res) => {
       return res.status(403).json({ error: "Không có quyền chỉnh sửa!" });
     }
 
-    await pool.execute(
-      "UPDATE Events SET Title = ?, Description = ?, StartTime = ?, EndTime = ?, MaxParticipants = ?, CategoryId = ?, VenueId = ? WHERE EventId = ?",
-      [
-        title,
-        description,
-        startTime,
-        endTime,
-        maxParticipants,
-        categoryId,
-        venueId,
-        eventId,
-      ]
-    );
+    await pool.execute(updateEventQuery, [
+      title,
+      description,
+      startTime,
+      endTime,
+      maxParticipants,
+      categoryId,
+      venueId,
+      eventId,
+    ]);
     res.json({ message: "Cập nhật sự kiện thành công!" });
   } catch (err) {
     console.error("Lỗi updateEvent:", err);
@@ -389,8 +391,8 @@ exports.updateEvent = async (req, res) => {
  * @swagger
  * /events/{id}:
  *   delete:
- *     summary: Xóa sự kiện (chỉ admin)
- *     description: Xóa sự kiện khỏi hệ thống
+ *     summary: Delete an event (only admin)
+ *     description: Removes an event from the system
  *     tags: [Events]
  *     security:
  *       - bearerAuth: []
@@ -402,7 +404,7 @@ exports.updateEvent = async (req, res) => {
  *           type: integer
  *     responses:
  *       200:
- *         description: Xóa thành công
+ *         description: Delete successful
  *         content:
  *           application/json:
  *             schema:
@@ -411,15 +413,18 @@ exports.updateEvent = async (req, res) => {
  *                 message:
  *                   type: string
  *       403:
- *         description: Không có quyền truy cập
+ *         description: Forbidden (not admin)
  *       404:
- *         description: Sự kiện không tồn tại
+ *         description: Event not found
  *       500:
- *         description: Lỗi server
+ *         description: Server error
  */
 exports.deleteEvent = async (req, res) => {
   const eventId = req.params.id;
 
+  const deleteEventQuery = `
+        DELETE FROM Events WHERE EventId = ?
+    `;
   try {
     const [event] = await pool.execute(
       "SELECT * FROM Events WHERE EventId = ?",
@@ -432,10 +437,151 @@ exports.deleteEvent = async (req, res) => {
       return res.status(403).json({ error: "Chỉ admin được xóa!" });
     }
 
-    await pool.execute("DELETE FROM Events WHERE EventId = ?", [eventId]);
+    await pool.execute(deleteEventQuery, [eventId]);
     res.json({ message: "Xóa sự kiện thành công!" });
   } catch (err) {
     console.error("Lỗi deleteEvent:", err);
+    res.status(500).json({ error: "Lỗi server: " + err.message });
+  }
+};
+
+/**
+ * @swagger
+ * /events/{id}:
+ *   get:
+ *     summary: Get event details
+ *     description: Returns detailed information of a specific event
+ *     tags: [Events]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved event details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 event:
+ *                   type: object
+ *                   properties:
+ *                     EventId:
+ *                       type: integer
+ *                     Title:
+ *                       type: string
+ *                     Description:
+ *                       type: string
+ *                     StartTime:
+ *                       type: string
+ *                       format: date-time
+ *                     EndTime:
+ *                       type: string
+ *                       format: date-time
+ *                     MaxParticipants:
+ *                       type: integer
+ *                     Status:
+ *                       type: integer
+ *                     OrganizerId:
+ *                       type: integer
+ *                     ApproverId:
+ *                       type: integer
+ *                     CategoryName:
+ *                       type: string
+ *                     VenueName:
+ *                       type: string
+ *       404:
+ *         description: Event not found
+ *       500:
+ *         description: Server error
+ */
+exports.getEventDetail = async (req, res) => {
+  const eventId = req.params.id;
+
+  const getEventDetailQuery = `
+        SELECT e.EventId, e.Title, e.Description, e.StartTime, e.EndTime, e.MaxParticipants, e.Status, e.OrganizerId, e.ApproverId, c.CategoryName, v.VenueName 
+        FROM Events e 
+        LEFT JOIN EventCategories c ON e.CategoryId = c.CategoryId 
+        LEFT JOIN Venues v ON e.VenueId = v.VenueId 
+        WHERE e.EventId = ?
+    `;
+  try {
+    const [rows] = await pool.execute(getEventDetailQuery, [eventId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Sự kiện không tồn tại!" });
+    }
+    res.json({ event: rows[0] });
+  } catch (err) {
+    console.error("Lỗi getEventDetail:", err);
+    res.status(500).json({ error: "Lỗi server: " + err.message });
+  }
+};
+
+/**
+ * @swagger
+ * /events/{id}/registrations:
+ *   get:
+ *     summary: Get list of registered participants for an event
+ *     description: Returns list of students registered (Status = 0) for a specific event
+ *     tags: [Events]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved list of registrations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 registrations:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       UserId:
+ *                         type: integer
+ *                       EventId:
+ *                         type: integer
+ *                       FullName:
+ *                         type: string
+ *                       EnrollmentNo:
+ *                         type: string
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Event not found or no registrations
+ *       500:
+ *         description: Server error
+ */
+exports.getEventRegistrations = async (req, res) => {
+  const eventId = req.params.id;
+
+  const getEventRegistrationsQuery = `
+        SELECT r.UserId, r.EventId, up.FullName, up.EnrollmentNo 
+        FROM Registrations r 
+        LEFT JOIN UserProfiles up ON r.UserId = up.UserId 
+        WHERE r.EventId = ? AND r.Status = 0
+    `;
+  try {
+    const [rows] = await pool.execute(getEventRegistrationsQuery, [eventId]);
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ error: "Sự kiện không tồn tại hoặc không có đăng ký!" });
+    }
+    res.json({ registrations: rows });
+  } catch (err) {
+    console.error("Lỗi getEventRegistrations:", err);
     res.status(500).json({ error: "Lỗi server: " + err.message });
   }
 };

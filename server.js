@@ -50,6 +50,12 @@ app.put(
   requireRole([1]),
   eventController.approveEvent
 ); // Chỉ admin
+app.get("/events/:id", eventController.getEventDetail); // Public
+app.get(
+  "/events/:id/registrations",
+  auth,
+  eventController.getEventRegistrations
+); // Bảo vệ auth
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
